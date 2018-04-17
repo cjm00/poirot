@@ -5,14 +5,17 @@ use std::borrow::Borrow;
 use std::collections::hash_map::{HashMap, RandomState};
 use std::default::Default;
 use std::hash::{BuildHasher, Hash, Hasher};
+use std::iter::FlatMap;
 use std::sync::{RwLock, RwLockWriteGuard};
+use std::vec;
 
 const DEFAULT_INITIAL_CAPACITY: usize = 64;
 const DEFAULT_SEGMENT_COUNT: usize = 16;
 
 pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRefMut<RwLockWriteGuard<'a, T>, U>;
 
-pub struct ConcurrentHashMap<K, V, B: BuildHasher = RandomState> {
+#[derive(Debug)]
+pub struct ConcurrentHashMap<K: Eq + Hash, V, B: BuildHasher = RandomState> {
     segments: Vec<RwLock<HashMap<K, V, B>>>,
     hash_builder: B,
 }
@@ -134,7 +137,45 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> Default for ConcurrentHashMap<K,
     }
 }
 
-pub struct ConcurrentHashSet<K, B: BuildHasher = RandomState> {
+impl<K, V, B> IntoIterator for ConcurrentHashMap<K, V, B>
+where
+    K: Eq + Hash,
+    B: BuildHasher,
+{
+    type Item = (K, V);
+    type IntoIter = ConcurrentHashMapIter<K, V, B>;
+    fn into_iter(self) -> Self::IntoIter {
+        let seg: fn(_) -> _ = |segment: RwLock<HashMap<K, V, B>>| segment.into_inner().unwrap();
+        let inner = self.segments.into_iter().flat_map(seg);
+        ConcurrentHashMapIter { inner }
+    }
+}
+
+pub struct ConcurrentHashMapIter<K, V, B>
+where
+    K: Eq + Hash,
+    B: BuildHasher,
+{
+    inner: FlatMap<
+        vec::IntoIter<RwLock<HashMap<K, V, B>>>,
+        HashMap<K, V, B>,
+        fn(RwLock<HashMap<K, V, B>>) -> HashMap<K, V, B>,
+    >,
+}
+
+impl<K, V, B> Iterator for ConcurrentHashMapIter<K, V, B>
+where
+    K: Eq + Hash,
+    B: BuildHasher,
+{
+    type Item = (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        Iterator::next(&mut self.inner)
+    }
+}
+
+#[derive(Debug)]
+pub struct ConcurrentHashSet<K: Eq + Hash, B: BuildHasher = RandomState> {
     table: ConcurrentHashMap<K, (), B>,
 }
 
