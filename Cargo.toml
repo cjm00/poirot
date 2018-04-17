@@ -1,0 +1,9 @@
+[package]
+name = "poirot"
+version = "0.2.0"
+authors = ["Chris McDonald <mail.chris.mcdonald@gmail.com>"]
+keywords = ["concurrent", "hash", "map"]
+categories = ["algorithms", "concurrency", "data-structures"]
+
+[dependencies]
+owning_ref = "0.3.3"
