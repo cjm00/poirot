@@ -170,7 +170,7 @@ where
 {
     type Item = (K, V);
     fn next(&mut self) -> Option<Self::Item> {
-        Iterator::next(&mut self.inner)
+        self.inner.next()
     }
 }
 
