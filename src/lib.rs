@@ -247,3 +247,23 @@ impl<K: Eq + Hash, B: BuildHasher + Default> Default for ConcurrentHashSet<K, B>
         }
     }
 }
+
+impl<K: Eq + Hash, B: BuildHasher> IntoIterator for ConcurrentHashSet<K, B> {
+    type Item = K;
+    type IntoIter = ConcurrentHashSetIter<K, B>;
+    fn into_iter(self) -> ConcurrentHashSetIter<K, B> {
+        let inner = self.table.into_iter();
+        ConcurrentHashSetIter{inner}
+    }
+}
+
+pub struct ConcurrentHashSetIter<K, B> where K: Eq + Hash, B: BuildHasher {
+    inner: ConcurrentHashMapIter<K, (), B>,
+}
+
+impl<K: Eq + Hash, B: BuildHasher> Iterator for ConcurrentHashSetIter<K, B> {
+    type Item = K;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(k, _)| k)
+    }
+}
