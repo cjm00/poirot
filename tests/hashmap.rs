@@ -32,7 +32,7 @@ fn hashmap_mutate() {
         poirot_map.insert(x, 0);
     }
 
-    for x in 0..8*1024 {
+    for x in 0..8 * 1024 {
         let mut entry = poirot_map.get_mut(&(x % 8)).unwrap();
         *entry += 1;
     }

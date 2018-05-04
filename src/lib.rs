@@ -5,14 +5,14 @@ use owning_ref::{OwningRef, OwningRefMut};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use std::borrow::Borrow;
+use std::cmp::{Eq, PartialEq};
 use std::collections::hash_map::{HashMap, RandomState};
 use std::default::Default;
+use std::fmt::{self, Debug, Formatter};
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::iter::FlatMap;
-use std::vec;
 use std::ops::{Deref, DerefMut};
-use std::cmp::{Eq, PartialEq};
-use std::fmt::{self, Debug, Formatter};
+use std::vec;
 
 const DEFAULT_INITIAL_CAPACITY: usize = 64;
 const DEFAULT_SEGMENT_COUNT: usize = 16;
@@ -33,9 +33,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     pub fn insert(&self, key: K, value: V) -> Option<V> {
         let hash = self.hash(&key);
         let segment_index = self.get_segment(hash);
-        self.segments[segment_index]
-            .write()
-            .insert(key, value)
+        self.segments[segment_index].write().insert(key, value)
     }
 
     #[inline]
@@ -46,9 +44,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     {
         let hash = self.hash(key);
         let segment_index = self.get_segment(hash);
-        self.segments[segment_index]
-            .read()
-            .contains_key(key)
+        self.segments[segment_index].read().contains_key(key)
     }
 
     #[inline]
@@ -75,7 +71,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         owning_ref
             .try_map(|segment| segment.get(key).ok_or(()))
             .ok()
-            .map(|inner| ReadGuard{inner})
+            .map(|inner| ReadGuard { inner })
     }
 
     #[inline]
@@ -91,7 +87,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         owning_ref
             .try_map_mut(|segment| segment.get_mut(key).ok_or(()))
             .ok()
-            .map(|inner| WriteGuard{inner})
+            .map(|inner| WriteGuard { inner })
     }
 
     pub fn with_options(capacity: usize, hash_builder: B, concurrency_level: usize) -> Self {
@@ -111,11 +107,16 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     }
 
     #[inline]
-    pub fn insert_or_update<F, G>(&self, key: K, insert: F, update: G) where F: FnOnce() -> V, G: FnOnce(&mut V) {
+    pub fn insert_or_update<F, G>(&self, key: K, insert: F, update: G)
+    where
+        F: FnOnce() -> V,
+        G: FnOnce(&mut V),
+    {
         let hash = self.hash(&key);
         let segment_index = self.get_segment(hash);
         let mut segment_lock = self.segments[segment_index].write();
-        segment_lock.entry(key)
+        segment_lock
+            .entry(key)
             .and_modify(update)
             .or_insert_with(insert);
     }
@@ -149,7 +150,12 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> Default for ConcurrentHashMap<K,
     }
 }
 
-impl<K, V, B> Debug for ConcurrentHashMap<K, V, B> where K: Hash + Eq + Debug, V: Debug, B: BuildHasher {
+impl<K, V, B> Debug for ConcurrentHashMap<K, V, B>
+where
+    K: Hash + Eq + Debug,
+    V: Debug,
+    B: BuildHasher,
+{
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "ConcurrentHashMap{{")?;
         for segment in &self.segments {
@@ -328,7 +334,11 @@ impl<K: Eq + Hash, B: BuildHasher + Default> Default for ConcurrentHashSet<K, B>
     }
 }
 
-impl<K, B> Debug for ConcurrentHashSet<K, B> where K: Hash + Eq + Debug, B: BuildHasher {
+impl<K, B> Debug for ConcurrentHashSet<K, B>
+where
+    K: Hash + Eq + Debug,
+    B: BuildHasher,
+{
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "ConcurrentHashSet{{")?;
         for segment in &self.table.segments {
@@ -345,11 +355,15 @@ impl<K: Eq + Hash, B: BuildHasher> IntoIterator for ConcurrentHashSet<K, B> {
     type IntoIter = ConcurrentHashSetIntoIter<K, B>;
     fn into_iter(self) -> ConcurrentHashSetIntoIter<K, B> {
         let inner = self.table.into_iter();
-        ConcurrentHashSetIntoIter{inner}
+        ConcurrentHashSetIntoIter { inner }
     }
 }
 
-pub struct ConcurrentHashSetIntoIter<K, B> where K: Eq + Hash, B: BuildHasher {
+pub struct ConcurrentHashSetIntoIter<K, B>
+where
+    K: Eq + Hash,
+    B: BuildHasher,
+{
     inner: ConcurrentHashMapIntoIter<K, (), B>,
 }
 

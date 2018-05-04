@@ -15,7 +15,7 @@ use rayon::prelude::*;
 
 use std::collections::HashMap;
 
-lazy_static!{
+lazy_static! {
     static ref RANDOM_VEC: Vec<u64> = {
         let mut rng = thread_rng();
         rng.gen_iter::<u64>().take(10_000).collect::<Vec<u64>>()
@@ -23,75 +23,93 @@ lazy_static!{
 }
 
 fn poirot_single_thread_map_insert(c: &mut Criterion) {
-    c.bench_function("poirot_single_thread_map_insert",
-        |b| b.iter(|| {
+    c.bench_function("poirot_single_thread_map_insert", |b| {
+        b.iter(|| {
             let poirot_map = ConcurrentHashMap::new();
             for x in RANDOM_VEC.iter().cloned() {
                 poirot_map.insert(x, x);
             }
         })
-     );
+    });
 }
 
 fn poirot_rayon_map_insert(c: &mut Criterion) {
-    c.bench_function("poirot_rayon_map_insert",
-        |b| b.iter(|| {
+    c.bench_function("poirot_rayon_map_insert", |b| {
+        b.iter(|| {
             let poirot_map = ConcurrentHashMap::new();
-            RANDOM_VEC.par_iter().for_each(|&x| {poirot_map.insert(x,x);});
+            RANDOM_VEC.par_iter().for_each(|&x| {
+                poirot_map.insert(x, x);
+            });
         })
-     );
+    });
 }
 
 fn poirot_rayon_map_mutate(c: &mut Criterion) {
-    c.bench_function("poirot_rayon_map_mutate",
-        |b| b.iter(|| {
+    c.bench_function("poirot_rayon_map_mutate", |b| {
+        b.iter(|| {
             let poirot_map = ConcurrentHashMap::new();
-            RANDOM_VEC.par_iter().for_each(|&x| poirot_map.insert_or_update(x % 128, || 0, |e| *e += 1));
+            RANDOM_VEC
+                .par_iter()
+                .for_each(|&x| poirot_map.insert_or_update(x % 128, || 0, |e| *e += 1));
         })
-     );
+    });
 }
 
 fn stdlib_single_thread_map_insert(c: &mut Criterion) {
-    c.bench_function("stdlib_single_thread_map_insert",
-        |b| b.iter(|| {
+    c.bench_function("stdlib_single_thread_map_insert", |b| {
+        b.iter(|| {
             let mut stdlib_map = HashMap::new();
             for x in RANDOM_VEC.iter().cloned() {
                 stdlib_map.insert(x, x);
             }
         })
-     );
+    });
 }
 
 fn chashmap_single_thread_map_insert(c: &mut Criterion) {
-    c.bench_function("chashmap_single_thread_map_insert",
-        |b| b.iter(|| {
+    c.bench_function("chashmap_single_thread_map_insert", |b| {
+        b.iter(|| {
             let chm = CHashMap::new();
             for x in RANDOM_VEC.iter().cloned() {
                 chm.insert(x, x);
             }
         })
-     );
+    });
 }
 
 fn chashmap_rayon_map_insert(c: &mut Criterion) {
-    c.bench_function("chashmap_rayon_map_insert",
-        |b| b.iter(|| {
+    c.bench_function("chashmap_rayon_map_insert", |b| {
+        b.iter(|| {
             let chm = CHashMap::new();
-            RANDOM_VEC.par_iter().for_each(|&x| {chm.insert(x,x);});
+            RANDOM_VEC.par_iter().for_each(|&x| {
+                chm.insert(x, x);
+            });
         })
-     );
+    });
 }
 
 fn chashmap_rayon_map_mutate(c: &mut Criterion) {
-    c.bench_function("chashmap_rayon_map_mutate",
-        |b| b.iter(|| {
+    c.bench_function("chashmap_rayon_map_mutate", |b| {
+        b.iter(|| {
             let chm = CHashMap::new();
-            RANDOM_VEC.par_iter().for_each(|&x| chm.upsert(x % 128, || 0, |e| *e += 1));
+            RANDOM_VEC
+                .par_iter()
+                .for_each(|&x| chm.upsert(x % 128, || 0, |e| *e += 1));
         })
-     );
+    });
 }
 
-criterion_group!(poirot_map, poirot_single_thread_map_insert, poirot_rayon_map_insert, poirot_rayon_map_mutate);
+criterion_group!(
+    poirot_map,
+    poirot_single_thread_map_insert,
+    poirot_rayon_map_insert,
+    poirot_rayon_map_mutate
+);
 criterion_group!(stdlib_map, stdlib_single_thread_map_insert);
-criterion_group!(chashmap, chashmap_single_thread_map_insert, chashmap_rayon_map_insert, chashmap_rayon_map_mutate);
+criterion_group!(
+    chashmap,
+    chashmap_single_thread_map_insert,
+    chashmap_rayon_map_insert,
+    chashmap_rayon_map_mutate
+);
 criterion_main!(poirot_map, stdlib_map, chashmap);
