@@ -42,6 +42,15 @@ fn poirot_rayon_map_insert(c: &mut Criterion) {
      );
 }
 
+fn poirot_rayon_map_mutate(c: &mut Criterion) {
+    c.bench_function("poirot_rayon_map_mutate",
+        |b| b.iter(|| {
+            let poirot_map = ConcurrentHashMap::new();
+            RANDOM_VEC.par_iter().for_each(|&x| poirot_map.insert_or_update(x % 128, || 0, |e| *e += 1));
+        })
+     );
+}
+
 fn stdlib_single_thread_map_insert(c: &mut Criterion) {
     c.bench_function("stdlib_single_thread_map_insert",
         |b| b.iter(|| {
@@ -73,7 +82,16 @@ fn chashmap_rayon_map_insert(c: &mut Criterion) {
      );
 }
 
-criterion_group!(poirot_map, poirot_single_thread_map_insert, poirot_rayon_map_insert);
+fn chashmap_rayon_map_mutate(c: &mut Criterion) {
+    c.bench_function("chashmap_rayon_map_mutate",
+        |b| b.iter(|| {
+            let chm = CHashMap::new();
+            RANDOM_VEC.par_iter().for_each(|&x| chm.upsert(x % 128, || 0, |e| *e += 1));
+        })
+     );
+}
+
+criterion_group!(poirot_map, poirot_single_thread_map_insert, poirot_rayon_map_insert, poirot_rayon_map_mutate);
 criterion_group!(stdlib_map, stdlib_single_thread_map_insert);
-criterion_group!(chashmap, chashmap_single_thread_map_insert, chashmap_rayon_map_insert);
+criterion_group!(chashmap, chashmap_single_thread_map_insert, chashmap_rayon_map_insert, chashmap_rayon_map_mutate);
 criterion_main!(poirot_map, stdlib_map, chashmap);
