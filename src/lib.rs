@@ -12,7 +12,7 @@ use std::iter::FlatMap;
 use std::vec;
 use std::ops::{Deref, DerefMut};
 use std::cmp::{Eq, PartialEq};
-use std::fmt;
+use std::fmt::{self, Debug, Formatter};
 
 const DEFAULT_INITIAL_CAPACITY: usize = 64;
 const DEFAULT_SEGMENT_COUNT: usize = 16;
@@ -149,6 +149,18 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> Default for ConcurrentHashMap<K,
     }
 }
 
+impl<K, V, B> Debug for ConcurrentHashMap<K, V, B> where K: Hash + Eq + Debug, V: Debug, B: BuildHasher {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "ConcurrentHashMap{{")?;
+        for segment in &self.segments {
+            for (k, v) in segment.read().iter() {
+                write!(f, "{:?}: {:?}, ", k, v)?;
+            }
+        }
+        write!(f, "}}")
+    }
+}
+
 pub struct ReadGuard<'a, K: 'a, V: 'a, B: 'a> {
     inner: OwningRef<RwLockReadGuard<'a, HashMap<K, V, B>>, V>,
 }
@@ -168,6 +180,11 @@ impl<'a, K: 'a, V: PartialEq + 'a, B: 'a> PartialEq for ReadGuard<'a, K, V, B> {
 
 impl<'a, K: 'a, V: Eq + 'a, B: 'a> Eq for ReadGuard<'a, K, V, B> {}
 
+impl<'a, K: 'a, V: Debug + 'a, B: 'a> Debug for ReadGuard<'a, K, V, B> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "ReadGuard({:?})", &**self)
+    }
+}
 
 pub struct WriteGuard<'a, K: 'a, V: 'a, B: 'a> {
     inner: OwningRefMut<RwLockWriteGuard<'a, HashMap<K, V, B>>, V>,
@@ -194,6 +211,11 @@ impl<'a, K: 'a, V: PartialEq + 'a, B: 'a> PartialEq for WriteGuard<'a, K, V, B> 
 
 impl<'a, K: 'a, V: Eq + 'a, B: 'a> Eq for WriteGuard<'a, K, V, B> {}
 
+impl<'a, K: 'a, V: Debug + 'a, B: 'a> Debug for WriteGuard<'a, K, V, B> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "WriteGuard({:?})", &**self)
+    }
+}
 
 impl<K, V, B> IntoIterator for ConcurrentHashMap<K, V, B>
 where
@@ -302,6 +324,18 @@ impl<K: Eq + Hash, B: BuildHasher + Default> Default for ConcurrentHashSet<K, B>
         ConcurrentHashSet {
             table: ConcurrentHashMap::default(),
         }
+    }
+}
+
+impl<K, B> Debug for ConcurrentHashSet<K, B> where K: Hash + Eq + Debug, B: BuildHasher {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "ConcurrentHashSet{{")?;
+        for segment in &self.table.segments {
+            for (k, _) in segment.read().iter() {
+                write!(f, "{:?}, ", k)?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
