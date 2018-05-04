@@ -1,18 +1,21 @@
 extern crate owning_ref;
-use owning_ref::{OwningRef, OwningRefMut, RwLockReadGuardRef};
+extern crate parking_lot;
+
+use owning_ref::{OwningRef, OwningRefMut};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use std::borrow::Borrow;
 use std::collections::hash_map::{HashMap, RandomState};
 use std::default::Default;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::iter::FlatMap;
-use std::sync::{RwLock, RwLockWriteGuard};
 use std::vec;
 
 const DEFAULT_INITIAL_CAPACITY: usize = 64;
 const DEFAULT_SEGMENT_COUNT: usize = 16;
 
 pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRefMut<RwLockWriteGuard<'a, T>, U>;
+pub type RwLockReadGuardRef<'a, T, U = T> = OwningRef<RwLockReadGuard<'a, T>, U>;
 
 #[derive(Debug)]
 pub struct ConcurrentHashMap<K: Eq + Hash, V, B: BuildHasher = RandomState> {
@@ -33,7 +36,6 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         let segment_index = self.get_segment(hash);
         self.segments[segment_index]
             .write()
-            .unwrap()
             .insert(key, value)
     }
 
@@ -47,7 +49,6 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         let segment_index = self.get_segment(hash);
         self.segments[segment_index]
             .read()
-            .unwrap()
             .contains_key(key)
     }
 
@@ -59,7 +60,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     {
         let hash = self.hash(key);
         let segment_index = self.get_segment(hash);
-        self.segments[segment_index].write().unwrap().remove(key)
+        self.segments[segment_index].write().remove(key)
     }
 
     #[inline]
@@ -70,7 +71,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     {
         let hash = self.hash(key);
         let segment_index = self.get_segment(hash);
-        let read_lock = self.segments[segment_index].read().unwrap();
+        let read_lock = self.segments[segment_index].read();
         let owning_ref = OwningRef::new(read_lock);
         owning_ref
             .try_map(|segment| segment.get(key).ok_or(()))
@@ -85,7 +86,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     {
         let hash = self.hash(key);
         let segment_index = self.get_segment(hash);
-        let write_lock = self.segments[segment_index].write().unwrap();
+        let write_lock = self.segments[segment_index].write();
         let owning_ref = OwningRefMut::new(write_lock);
         owning_ref
             .try_map_mut(|segment| segment.get_mut(key).ok_or(()))
@@ -145,7 +146,7 @@ where
     type Item = (K, V);
     type IntoIter = ConcurrentHashMapIter<K, V, B>;
     fn into_iter(self) -> Self::IntoIter {
-        let seg: fn(_) -> _ = |segment: RwLock<HashMap<K, V, B>>| segment.into_inner().unwrap();
+        let seg: fn(_) -> _ = |segment: RwLock<HashMap<K, V, B>>| segment.into_inner();
         let inner = self.segments.into_iter().flat_map(seg);
         ConcurrentHashMapIter { inner }
     }
