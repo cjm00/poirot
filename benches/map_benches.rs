@@ -18,7 +18,7 @@ use std::collections::HashMap;
 lazy_static!{
     static ref RANDOM_VEC: Vec<u64> = {
         let mut rng = thread_rng();
-        rng.gen_iter::<u64>().take(50_000).collect::<Vec<u64>>()
+        rng.gen_iter::<u64>().take(10_000).collect::<Vec<u64>>()
     };
 }
 
