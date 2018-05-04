@@ -110,6 +110,16 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     }
 
     #[inline]
+    pub fn insert_or_update<F, G>(&self, key: K, insert: F, update: G) where F: FnOnce() -> V, G: FnOnce(&mut V) {
+        let hash = self.hash(&key);
+        let segment_index = self.get_segment(hash);
+        let mut segment_lock = self.segments[segment_index].write();
+        segment_lock.entry(key)
+            .and_modify(update)
+            .or_insert_with(insert);
+    }
+
+    #[inline]
     fn hash<Q: ?Sized>(&self, key: &Q) -> u64
     where
         K: Borrow<Q>,
@@ -120,7 +130,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         hasher.finish()
     }
 
-    #[inline]
+    #[inline(always)]
     fn get_segment(&self, hash: u64) -> usize {
         let shift_size =
             (std::mem::size_of::<usize>() * 8) - self.segments.len().trailing_zeros() as usize;
