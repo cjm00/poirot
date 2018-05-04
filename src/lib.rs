@@ -10,15 +10,14 @@ use std::default::Default;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::iter::FlatMap;
 use std::vec;
+use std::ops::{Deref, DerefMut};
+use std::cmp::{Eq, PartialEq};
+use std::fmt;
 
 const DEFAULT_INITIAL_CAPACITY: usize = 64;
 const DEFAULT_SEGMENT_COUNT: usize = 16;
 
-pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRefMut<RwLockWriteGuard<'a, T>, U>;
-pub type RwLockReadGuardRef<'a, T, U = T> = OwningRef<RwLockReadGuard<'a, T>, U>;
-
-#[derive(Debug)]
-pub struct ConcurrentHashMap<K: Eq + Hash, V, B: BuildHasher = RandomState> {
+pub struct ConcurrentHashMap<K, V, B = RandomState> {
     segments: Vec<RwLock<HashMap<K, V, B>>>,
     hash_builder: B,
 }
@@ -64,7 +63,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
     }
 
     #[inline]
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<RwLockReadGuardRef<HashMap<K, V, B>, V>>
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<ReadGuard<K, V, B>>
     where
         K: Borrow<Q>,
         Q: Eq + Hash,
@@ -76,10 +75,11 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         owning_ref
             .try_map(|segment| segment.get(key).ok_or(()))
             .ok()
+            .map(|inner| ReadGuard{inner})
     }
 
     #[inline]
-    pub fn get_mut<Q: ?Sized>(&self, key: &Q) -> Option<RwLockWriteGuardRefMut<HashMap<K, V, B>, V>>
+    pub fn get_mut<Q: ?Sized>(&self, key: &Q) -> Option<WriteGuard<K, V, B>>
     where
         K: Borrow<Q>,
         Q: Eq + Hash,
@@ -91,6 +91,7 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> ConcurrentHashMap<K, V, B> {
         owning_ref
             .try_map_mut(|segment| segment.get_mut(key).ok_or(()))
             .ok()
+            .map(|inner| WriteGuard{inner})
     }
 
     pub fn with_options(capacity: usize, hash_builder: B, concurrency_level: usize) -> Self {
@@ -148,21 +149,67 @@ impl<K: Eq + Hash, V, B: BuildHasher + Default> Default for ConcurrentHashMap<K,
     }
 }
 
+pub struct ReadGuard<'a, K: 'a, V: 'a, B: 'a> {
+    inner: OwningRef<RwLockReadGuard<'a, HashMap<K, V, B>>, V>,
+}
+
+impl<'a, K: 'a, V: 'a, B: 'a> Deref for ReadGuard<'a, K, V, B> {
+    type Target = V;
+    fn deref(&self) -> &V {
+        &self.inner
+    }
+}
+
+impl<'a, K: 'a, V: PartialEq + 'a, B: 'a> PartialEq for ReadGuard<'a, K, V, B> {
+    fn eq(&self, other: &Self) -> bool {
+        V::eq(self, other)
+    }
+}
+
+impl<'a, K: 'a, V: Eq + 'a, B: 'a> Eq for ReadGuard<'a, K, V, B> {}
+
+
+pub struct WriteGuard<'a, K: 'a, V: 'a, B: 'a> {
+    inner: OwningRefMut<RwLockWriteGuard<'a, HashMap<K, V, B>>, V>,
+}
+
+impl<'a, K: 'a, V: 'a, B: 'a> Deref for WriteGuard<'a, K, V, B> {
+    type Target = V;
+    fn deref(&self) -> &V {
+        &self.inner
+    }
+}
+
+impl<'a, K: 'a, V: 'a, B: 'a> DerefMut for WriteGuard<'a, K, V, B> {
+    fn deref_mut(&mut self) -> &mut V {
+        &mut self.inner
+    }
+}
+
+impl<'a, K: 'a, V: PartialEq + 'a, B: 'a> PartialEq for WriteGuard<'a, K, V, B> {
+    fn eq(&self, other: &Self) -> bool {
+        V::eq(self, other)
+    }
+}
+
+impl<'a, K: 'a, V: Eq + 'a, B: 'a> Eq for WriteGuard<'a, K, V, B> {}
+
+
 impl<K, V, B> IntoIterator for ConcurrentHashMap<K, V, B>
 where
     K: Eq + Hash,
     B: BuildHasher,
 {
     type Item = (K, V);
-    type IntoIter = ConcurrentHashMapIter<K, V, B>;
+    type IntoIter = ConcurrentHashMapIntoIter<K, V, B>;
     fn into_iter(self) -> Self::IntoIter {
         let seg: fn(_) -> _ = |segment: RwLock<HashMap<K, V, B>>| segment.into_inner();
         let inner = self.segments.into_iter().flat_map(seg);
-        ConcurrentHashMapIter { inner }
+        ConcurrentHashMapIntoIter { inner }
     }
 }
 
-pub struct ConcurrentHashMapIter<K, V, B>
+pub struct ConcurrentHashMapIntoIter<K, V, B>
 where
     K: Eq + Hash,
     B: BuildHasher,
@@ -174,7 +221,7 @@ where
     >,
 }
 
-impl<K, V, B> Iterator for ConcurrentHashMapIter<K, V, B>
+impl<K, V, B> Iterator for ConcurrentHashMapIntoIter<K, V, B>
 where
     K: Eq + Hash,
     B: BuildHasher,
@@ -185,8 +232,7 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct ConcurrentHashSet<K: Eq + Hash, B: BuildHasher = RandomState> {
+pub struct ConcurrentHashSet<K, B = RandomState> {
     table: ConcurrentHashMap<K, (), B>,
 }
 
@@ -261,18 +307,18 @@ impl<K: Eq + Hash, B: BuildHasher + Default> Default for ConcurrentHashSet<K, B>
 
 impl<K: Eq + Hash, B: BuildHasher> IntoIterator for ConcurrentHashSet<K, B> {
     type Item = K;
-    type IntoIter = ConcurrentHashSetIter<K, B>;
-    fn into_iter(self) -> ConcurrentHashSetIter<K, B> {
+    type IntoIter = ConcurrentHashSetIntoIter<K, B>;
+    fn into_iter(self) -> ConcurrentHashSetIntoIter<K, B> {
         let inner = self.table.into_iter();
-        ConcurrentHashSetIter{inner}
+        ConcurrentHashSetIntoIter{inner}
     }
 }
 
-pub struct ConcurrentHashSetIter<K, B> where K: Eq + Hash, B: BuildHasher {
-    inner: ConcurrentHashMapIter<K, (), B>,
+pub struct ConcurrentHashSetIntoIter<K, B> where K: Eq + Hash, B: BuildHasher {
+    inner: ConcurrentHashMapIntoIter<K, (), B>,
 }
 
-impl<K: Eq + Hash, B: BuildHasher> Iterator for ConcurrentHashSetIter<K, B> {
+impl<K: Eq + Hash, B: BuildHasher> Iterator for ConcurrentHashSetIntoIter<K, B> {
     type Item = K;
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(k, _)| k)
