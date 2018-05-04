@@ -231,6 +231,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 pub struct ConcurrentHashMapIntoIter<K, V, B>
 where
     K: Eq + Hash,
@@ -331,8 +332,8 @@ impl<K, B> Debug for ConcurrentHashSet<K, B> where K: Hash + Eq + Debug, B: Buil
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "ConcurrentHashSet{{")?;
         for segment in &self.table.segments {
-            for (k, _) in segment.read().iter() {
-                write!(f, "{:?}, ", k)?;
+            for key in segment.read().keys() {
+                write!(f, "{:?}, ", key)?;
             }
         }
         write!(f, "}}")
